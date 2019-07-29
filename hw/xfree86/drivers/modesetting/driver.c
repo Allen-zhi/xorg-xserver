@@ -757,6 +757,20 @@ FreeRec(ScrnInfoPtr pScrn)
 }
 
 static void
+try_enable_exa(ScrnInfoPtr pScrn)
+{
+    modesettingPtr ms = modesettingPTR(pScrn);
+
+    if (xf86LoadSubModule(pScrn, "exa"))
+        ms_init_exa(pScrn);
+
+    if (ms->drmmode.exa)
+        xf86DrvMsg(pScrn->scrnIndex, X_INFO, "exa initialized\n");
+    else
+        xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "exa initialization failed\n");
+}
+
+static void
 try_enable_glamor(ScrnInfoPtr pScrn)
 {
     modesettingPtr ms = modesettingPTR(pScrn);
@@ -1221,10 +1235,16 @@ msUpdatePacked(ScreenPtr pScreen, shadowBufPtr pBuf)
         free(prect);
     } while (0);
 
+    if (ms->drmmode.exa)
+        ms_exa_prepare_access(pBuf->pPixmap, 0);
+
     if (use_ms_shadow)
         ms_shadowUpdate32to24(pScreen, pBuf);
     else
         shadowUpdatePacked(pScreen, pBuf);
+
+    if (ms->drmmode.exa)
+        ms_exa_finish_access(pBuf->pPixmap, 0);
 }
 
 static Bool
@@ -1391,10 +1411,12 @@ CreateScreenResources(ScreenPtr pScreen)
     if (!ms->drmmode.sw_cursor)
         drmmode_map_cursor_bos(pScrn, &ms->drmmode);
 
-    if (!ms->drmmode.gbm) {
+    if (!ms->drmmode.gbm && !ms->drmmode.exa) {
         pixels = drmmode_map_front_bo(&ms->drmmode);
         if (!pixels)
             return FALSE;
+
+        drmmode_glamor_handle_new_screen_pixmap(&ms->drmmode);
     }
 
     rootPixmap = pScreen->GetScreenPixmap(pScreen);
@@ -1595,6 +1617,7 @@ ScreenInit(ScreenPtr pScreen, int argc, char **argv)
     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     modesettingPtr ms = modesettingPTR(pScrn);
     VisualPtr visual;
+    const char *str_value;
 
     pScrn->pScreen = pScreen;
 
@@ -1682,6 +1705,11 @@ ScreenInit(ScreenPtr pScreen, int argc, char **argv)
 
     xf86SetBlackWhitePixels(pScreen);
 
+    str_value = xf86GetOptValString(ms->drmmode.Options,
+                                    OPTION_ACCEL_METHOD);
+    if (str_value && !strcmp(str_value, "exa"))
+        try_enable_exa(pScrn);
+
     xf86SetBackingStore(pScreen);
     xf86SetSilkenMouse(pScreen);
     miDCInitialize(pScreen, xf86GetPointerScreenFuncs());
@@ -1744,6 +1772,16 @@ ScreenInit(ScreenPtr pScreen, int argc, char **argv)
                        "Failed to initialize XV support.\n");
     }
 #endif
+
+    if (ms->drmmode.exa) {
+        ms->adaptor = ms_exa_xv_init(pScreen, 16);
+        if (ms->adaptor != NULL) {
+            xf86XVScreenInit(pScreen, &ms->adaptor, 1);
+        } else {
+            xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
+                       "Failed to initialize XV support.\n");
+        }
+    }
 
     if (serverGeneration == 1)
         xf86ShowUnusedOptions(pScrn->scrnIndex, pScrn->options);
@@ -1891,6 +1929,10 @@ CloseScreen(ScreenPtr pScreen)
 
     if (pScrn->vtSema) {
         LeaveVT(pScrn);
+    }
+
+    if (ms->drmmode.exa) {
+        ms_deinit_exa(pScrn);
     }
 
     pScreen->CreateScreenResources = ms->createScreenResources;
