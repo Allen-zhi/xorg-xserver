@@ -70,6 +70,8 @@ enum drmmode_connector_property {
 enum drmmode_crtc_property {
     DRMMODE_CRTC_ACTIVE,
     DRMMODE_CRTC_MODE_ID,
+    DRMMODE_CRTC_GAMMA_LUT,
+    DRMMODE_CRTC_GAMMA_LUT_SIZE,
     DRMMODE_CRTC__COUNT
 };
 
@@ -257,6 +259,7 @@ typedef struct {
 
     Bool enable_flipping;
     Bool flipping_active;
+    Bool use_gamma_lut;
     Bool is_scale;
     Bool is_dummy;
     Bool need_remap;
