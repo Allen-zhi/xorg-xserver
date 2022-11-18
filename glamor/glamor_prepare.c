@@ -167,7 +167,6 @@ done:
 
         priv->gl_synced = TRUE;
     }
-    return TRUE;
 #endif
 
     priv->prepared = TRUE;
