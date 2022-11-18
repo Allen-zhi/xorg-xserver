@@ -4560,7 +4560,7 @@ drmmode_update_fb(xf86CrtcPtr crtc, drmmode_fb *fb)
     }
 
     /* scaled screens may not be able to map areas(due to precision) */
-    if (drmmode_crtc->is_scale && drmmode->exa)
+    if (drmmode_crtc->is_scale)
         fb->need_clear = TRUE;
 
     dirty = NULL;
